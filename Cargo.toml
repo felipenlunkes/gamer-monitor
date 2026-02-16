@@ -1,0 +1,14 @@
+[package]
+name = "gamer-monitor"
+version = "1.0.0"
+edition = "2021"
+authors = ["Felipe Miguel Nery Lunkes"]
+
+[dependencies]
+gtk4 = "0.9"
+glib = "0.20"
+regex = "1.11"
+
+[[bin]]
+name = "gamer-monitor"
+path = "src/main.rs"
