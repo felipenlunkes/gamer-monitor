@@ -1,5 +1,7 @@
 # Gamer Monitor
 
+<div align="justify">
+
 ## :uk: English
 
 **Gamer Monitor** is a real-time performance monitor for Linux with a **GTK4** interface,
@@ -371,3 +373,5 @@ Contribuições são bem-vindas via issues e pull requests.
 - Em placas ASUS, confirme o módulo `nct6775`;
 - Para NVIDIA, tenha o `nvidia-smi` funcionando;
 - NVMe múltiplos são detectados automaticamente.
+
+</div>
