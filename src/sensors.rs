@@ -1,5 +1,34 @@
-use std::process::Command;
 use regex::Regex;
+use std::io;
+use std::process::Command;
+use once_cell::sync::Lazy;
+
+static RE_TCTL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Tctl:\s+\+([0-9.]+)").unwrap());
+
+static RE_TDIE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Tdie:\s+\+([0-9.]+)").unwrap());
+
+static RE_PACKAGE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Package id 0:\s+\+([0-9.]+)").unwrap());
+
+static RE_CORE0: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Core 0:\s+\+([0-9.]+)").unwrap());
+
+static RE_NVME: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Composite:\s+\+([0-9.]+)").unwrap());
+
+static RE_CPU_FAN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"fan2:\s+([0-9]+)\s+RPM").unwrap());
+
+static RE_CHASSIS1: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"fan3:\s+([0-9]+)\s+RPM").unwrap());
+
+static RE_CHASSIS2_A: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"nct6799-isa-0290.*?fan1:\s+([0-9]+)\s+RPM").unwrap());
+
+static RE_CHASSIS2_B: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"nct6798-isa-0290.*?fan1:\s+([0-9]+)\s+RPM").unwrap());
 
 #[derive(Debug, Clone, Default)]
 pub struct SensorData {
@@ -27,27 +56,25 @@ pub struct SensorData {
 }
 
 impl SensorData {
-
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn update(&mut self) {
+    pub fn identify_hardware(&mut self) {
+        self.identify_processor();
+        self.identify_gpu();
+    }
 
-        self.update_cpu_info();
-        self.update_gpu_info();
+    pub fn update(&mut self) {
+        self.cpu_usage = self.get_cpu_usage();
         self.update_sensors();
         self.update_ram();
     }
 
-    fn update_cpu_info(&mut self) {
-
+    fn identify_processor(&mut self) {
         if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
-
             for line in cpuinfo.lines() {
-
                 if line.starts_with("model name") {
-
                     if let Some(name) = line.split(':').nth(1) {
                         self.cpu_name = name.trim().to_string();
                         break;
@@ -55,11 +82,9 @@ impl SensorData {
                 }
             }
         }
-        self.cpu_usage = self.get_cpu_usage();
     }
 
     fn get_cpu_usage(&self) -> f32 {
-
         let stat1 = std::fs::read_to_string("/proc/stat").unwrap_or_default();
         let values1: Vec<u64> = stat1
             .lines()
@@ -83,7 +108,6 @@ impl SensorData {
             .collect();
 
         if values1.len() >= 4 && values2.len() >= 4 {
-
             let idle1 = values1[3] + values1.get(4).unwrap_or(&0);
             let idle2 = values2[3] + values2.get(4).unwrap_or(&0);
 
@@ -100,8 +124,7 @@ impl SensorData {
         0.0
     }
 
-    fn update_gpu_info(&mut self) {
-
+    fn identify_gpu(&mut self) {
         if let Ok(output) = Command::new("nvidia-smi")
             .arg("--query-gpu=name")
             .arg("--format=csv,noheader")
@@ -117,11 +140,9 @@ impl SensorData {
         }
 
         if let Ok(output) = Command::new("lspci").output() {
-
             let lspci_out = String::from_utf8_lossy(&output.stdout);
 
             for line in lspci_out.lines() {
-
                 if line.contains("VGA compatible controller") {
                     let mut last_bracket_content = String::new();
                     let mut current_pos = 0;
@@ -130,7 +151,8 @@ impl SensorData {
                         let absolute_start = current_pos + start;
                         if let Some(end) = line[absolute_start..].find(']') {
                             let absolute_end = absolute_start + end;
-                            last_bracket_content = line[absolute_start+1..absolute_end].to_string();
+                            last_bracket_content =
+                                line[absolute_start + 1..absolute_end].to_string();
                             current_pos = absolute_end + 1;
                         } else {
                             break;
@@ -158,134 +180,174 @@ impl SensorData {
         }
     }
 
-    fn update_sensors(&mut self) {
+    fn update_nvidia_gpu_info(&mut self) {
 
-        if let Ok(output) = Command::new("sensors").output() {
-            let sensors_output = String::from_utf8_lossy(&output.stdout);
+        if let Ok(output) = Command::new("nvidia-smi")
+            .arg("--query-gpu=temperature.gpu,fan.speed")
+            .arg("--format=csv,noheader,nounits")
+            .output()
+        {
+            if output.status.success() {
+                let out = String::from_utf8_lossy(&output.stdout);
+                let parts: Vec<&str> = out.trim().split(',').collect();
 
-            // Parse CPU temperature
-            if let Some(temp) = self.extract_sensor_value(&sensors_output, r"Tctl:\s+\+([0-9.]+)") {
-                self.cpu_temp = temp;
-            } else if let Some(temp) = self.extract_sensor_value(&sensors_output, r"Tdie:\s+\+([0-9.]+)") {
-                self.cpu_temp = temp;
-            } else if let Some(temp) = self.extract_sensor_value(&sensors_output, r"Package id 0:\s+\+([0-9.]+)") {
-                self.cpu_temp = temp;
-            } else if let Some(temp) = self.extract_sensor_value(&sensors_output, r"Core 0:\s+\+([0-9.]+)") {
-                self.cpu_temp = temp;
-            }
+                if let Some(temp) = parts.get(0) {
+                    self.gpu_edge = temp.trim().to_string();
+                }
 
-            if self.gpu_name.contains("Radeon") || sensors_output.contains("amdgpu") {
-
-                let lines: Vec<&str> = sensors_output.lines().collect();
-                let mut in_gpu_section = false;
-
-                for line in lines {
-                    let trimmed = line.trim_start();
-
-                    // Detects a Radeon graphics card
-                    if trimmed.starts_with("amdgpu-pci-") {
-                        in_gpu_section = true;
-
-                        self.gpu_edge.clear();
-                        self.gpu_hotspot.clear();
-                        self.gpu_memory.clear();
-                        self.gpu_fan.clear();
-                        continue;
-                    }
-
-                    // Exit if found another PCI device
-                    if in_gpu_section && trimmed.ends_with(':') && trimmed.contains("-pci-") && !trimmed.starts_with("amdgpu-pci-") {
-                        in_gpu_section = false;
-                    }
-
-                    if in_gpu_section {
-                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                        if parts.is_empty() {
-                            continue;
-                        }
-
-                        match parts[0] {
-                            label if label.starts_with("junction") && parts.len() >= 2 => {
-                                self.gpu_hotspot = parts[1].trim_start_matches('+').to_string();
-                            }
-                            label if label.starts_with("edge") && parts.len() >= 2 => {
-                                self.gpu_edge = parts[1].trim_start_matches('+').to_string();
-                            }
-                            label if label.starts_with("mem") && parts.len() >= 2 => {
-                                self.gpu_memory = parts[1].trim_start_matches('+').to_string();
-                            }
-                            label if label.starts_with("fan") && parts.len() >= 2 => {
-                                self.gpu_fan = format!("{} RPM", parts[1]);
-                            }
-                            _ => {}
-                        }
-
-                        if !self.gpu_hotspot.is_empty() && !self.gpu_memory.is_empty() {
-                            break;
-                        }
-                    }
+                if let Some(fan) = parts.get(1) {
+                    self.gpu_fan = format!("{} RPM", fan.trim());
                 }
             }
+        }
 
-            // Parse NVME temperatures
-            self.nvme_temps.clear();
-            let re = Regex::new(r"Composite:\s+\+([0-9.]+)").unwrap();
-            for cap in re.captures_iter(&sensors_output) {
-                if let Some(temp) = cap.get(1) {
-                    self.nvme_temps.push(temp.as_str().to_string());
+        return;
+    }
+
+    fn update_radeon_gpu_info(&mut self, sensors_output: &String) {
+
+        let lines: Vec<&str> = sensors_output.lines().collect();
+        let mut in_gpu_section = false;
+
+        for line in lines {
+            let trimmed = line.trim_start();
+
+            // Detects a Radeon graphics card
+            if trimmed.starts_with("amdgpu-pci-") {
+                in_gpu_section = true;
+
+                self.gpu_edge.clear();
+                self.gpu_hotspot.clear();
+                self.gpu_memory.clear();
+                self.gpu_fan.clear();
+
+                continue;
+            }
+
+            // Exit if found another PCI device
+            if in_gpu_section
+                && !trimmed.starts_with("amdgpu-pci-")
+                && !trimmed.is_empty()
+                && !trimmed.starts_with(' ')
+                && !trimmed.starts_with('\t')
+                && (trimmed.contains("-isa-") || trimmed.contains("-pci-") || trimmed.contains("-i2c-")) {
+                in_gpu_section = false;
+            }
+
+            if in_gpu_section {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.is_empty() {
+                    continue;
                 }
-            }
 
-            // Parse fan speeds
-            if let Some(fan) = self.extract_sensor_value(&sensors_output, r"fan2:\s+([0-9]+)\s+RPM") {
-                self.cpu_fan = format!("{} RPM", fan);
-            }
-            if let Some(fan) = self.extract_sensor_value(&sensors_output, r"fan3:\s+([0-9]+)\s+RPM") {
-                self.chassis_fan1 = format!("{} RPM", fan);
-            }
-
-            let patterns = vec![
-                r"nct6799-isa-0290.*?fan1:\s+([0-9]+)\s+RPM",
-                r"nct6798-isa-0290.*?fan1:\s+([0-9]+)\s+RPM",
-            ];
-
-            for pattern in patterns {
-                if let Ok(re) = Regex::new(pattern) {
-                    if let Some(cap) = re.captures(&sensors_output) {
-                        if let Some(fan) = cap.get(1) {
-                            self.chassis_fan2 = format!("{} RPM", fan.as_str());
-                            break;
-                        }
+                match parts[0] {
+                    label if label.starts_with("junction") && parts.len() >= 2 => {
+                        self.gpu_hotspot = parts[1].trim_start_matches('+').to_string();
                     }
+                    label if label.starts_with("edge") && parts.len() >= 2 => {
+                        self.gpu_edge = parts[1].trim_start_matches('+').to_string();
+                    }
+                    label if label.starts_with("mem") && parts.len() >= 2 => {
+                        self.gpu_memory = parts[1].trim_start_matches('+').to_string();
+                    }
+                    label if label.starts_with("fan") && parts.len() >= 2 => {
+                        self.gpu_fan = format!("{} RPM", parts[1]);
+                    }
+                    _ => {}
                 }
             }
         }
     }
 
-    fn extract_sensor_value(&self, text: &str, pattern: &str) -> Option<String> {
+    fn update_gpu_info(&mut self, sensors_output: &String) {
 
-        let re = Regex::new(pattern).ok()?;
+        if self.gpu_name.to_lowercase().contains("nvidia") {
+            self.update_nvidia_gpu_info();
+        }
+
+        if self.gpu_name.contains("Radeon") || sensors_output.contains("amdgpu") {
+            self.update_radeon_gpu_info(sensors_output);
+        }
+    }
+
+    fn get_sensors_data(&mut self) -> Result<String, io::Error> {
+        let output = Command::new("sensors").output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    fn update_cpu_info(&mut self, sensors_output: &String) {
+        // Parse CPU temperature
+        if let Some(temp) = self.extract_sensor_value(&sensors_output, &RE_TCTL) {
+            self.cpu_temp = temp;
+        } else if let Some(temp) =
+            self.extract_sensor_value(&sensors_output, &RE_TDIE)
+        {
+            self.cpu_temp = temp;
+        } else if let Some(temp) =
+            self.extract_sensor_value(&sensors_output, &RE_PACKAGE)
+        {
+            self.cpu_temp = temp;
+        } else if let Some(temp) =
+            self.extract_sensor_value(&sensors_output, &RE_CORE0)
+        {
+            self.cpu_temp = temp;
+        }
+    }
+
+    fn update_nvme_info(&mut self, sensors_output: &String) {
+        self.nvme_temps.clear();
+        for cap in RE_NVME.captures_iter(sensors_output) {
+            if let Some(temp) = cap.get(1) {
+                self.nvme_temps.push(temp.as_str().to_string());
+            }
+        }
+    }
+
+    fn update_fan_info(&mut self, sensors_output: &String) {
+        if let Some(fan) = RE_CPU_FAN.captures(sensors_output).and_then(|c| c.get(1)) {
+            self.cpu_fan = format!("{} RPM", fan.as_str());
+        }
+
+        if let Some(fan) = RE_CHASSIS1.captures(sensors_output).and_then(|c| c.get(1)) {
+            self.chassis_fan1 = format!("{} RPM", fan.as_str());
+        }
+
+        if let Some(fan) = RE_CHASSIS2_A.captures(sensors_output)
+            .or_else(|| RE_CHASSIS2_B.captures(sensors_output))
+            .and_then(|c| c.get(1))
+        {
+            self.chassis_fan2 = format!("{} RPM", fan.as_str());
+        }
+    }
+
+    fn update_sensors(&mut self) {
+        let sensors_data_found = self.get_sensors_data();
+        if sensors_data_found.is_err() {
+            return;
+        }
+
+        let sensors_output = sensors_data_found.unwrap();
+
+        self.update_cpu_info(&sensors_output);
+        self.update_gpu_info(&sensors_output);
+        self.update_nvme_info(&sensors_output);
+        self.update_fan_info(&sensors_output);
+    }
+
+    fn extract_sensor_value(&self, text: &str, re: &Regex) -> Option<String> {
         let cap = re.captures(text)?;
         Some(cap.get(1)?.as_str().to_string())
     }
 
     fn update_ram(&mut self) {
-
-        if let Ok(output) = Command::new("free")
-            .arg("-m")
-            .env("LC_ALL", "C")
-            .output()
-        {
-
+        if let Ok(output) = Command::new("free").arg("-m").env("LC_ALL", "C").output() {
             let free_output = String::from_utf8_lossy(&output.stdout);
 
             for line in free_output.lines() {
-
                 if line.starts_with("Mem:") || line.starts_with("Mem.:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
 
                     if parts.len() >= 7 {
-
                         if let Ok(total) = parts[1].parse::<f32>() {
                             self.ram_total = total / 1024.0;
                         }

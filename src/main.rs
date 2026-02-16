@@ -21,8 +21,10 @@ fn main() {
 }
 
 fn build_ui(app: &Application) {
+
     // Create sensor data
     let sensor_data = Rc::new(RefCell::new(SensorData::new()));
+    sensor_data.borrow_mut().identify_hardware();
     sensor_data.borrow_mut().update();
 
     let app_title = APP_TITLE.to_string() + " v" + VERSION;
@@ -65,8 +67,11 @@ fn build_ui(app: &Application) {
 
     window.set_child(Some(&main_box));
 
-    // Update every 2 seconds
     let sensor_data_clone = sensor_data.clone();
+
+    sensor_data_clone.borrow_mut().identify_hardware();
+
+    // Update every 5 seconds
     timeout_add_seconds_local(5, move || {
         sensor_data_clone.borrow_mut().update();
         glib::ControlFlow::Continue
@@ -99,7 +104,7 @@ fn create_cpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     // CPU Temperature
     let cpu_temp_label = Label::new(Some("Temperature (°C):"));
     cpu_temp_label.set_halign(gtk4::Align::Start);
-
+    
     let cpu_temp_value = Label::new(Some(&sensor_data.borrow().cpu_temp));
     cpu_temp_value.set_halign(gtk4::Align::Start);
     grid.attach(&cpu_temp_label, 0, 1, 1, 1);
@@ -137,6 +142,7 @@ fn create_cpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
 }
 
 fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
+
     let frame = Frame::new(Some("GPU (graphics card)"));
     let grid = Grid::new();
     grid.set_margin_top(10);
@@ -325,7 +331,7 @@ fn create_ram_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     let ram_progress_clone = ram_progress.clone();
     let sensor_data_clone = sensor_data.clone();
     
-    timeout_add_seconds_local(2, move || {
+    timeout_add_seconds_local(5, move || {
 
         let data = sensor_data_clone.borrow();
         total_value_clone.set_text(&format!("{:.1} GB", data.ram_total));
