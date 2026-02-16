@@ -24,8 +24,8 @@ optimized for **ASUS** motherboards and **AMD Radeon RX**, **NVIDIA**, and **Int
 ### Quick Start (recommended)
 
 ```bash
-chmod +x install.sh
-./install.sh
+chmod +x build-install.sh
+./build-install.sh
 ```
 
 The script will:
@@ -210,8 +210,8 @@ otimizado para placas-mãe **ASUS** e GPUs **AMD Radeon RX**, **NVIDIA** e **Int
 ### Guia de início rápido (recomendado)
 
 ```bash
-chmod +x install.sh
-./install.sh
+chmod +x build-install.sh
+./build-install.sh
 ```
 
 O script irá:
