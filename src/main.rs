@@ -199,7 +199,7 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
         grid.attach(&fan_value, 1, row, 1, 1);
     } else {
         // Just temperature for NVIDIA/Intel
-        let temp_label = Label::new(Some("Temperature:"));
+        let temp_label = Label::new(Some("Temperature (°C):"));
         temp_label.set_halign(gtk4::Align::Start);
         edge_value.set_halign(gtk4::Align::Start);
         grid.attach(&temp_label, 0, row, 1, 1);
@@ -252,7 +252,7 @@ fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
         let data = sensor_data_clone.borrow();
         for (i, label) in nvme_labels.iter().enumerate() {
             if let Some(temp) = data.nvme_temps.get(i) {
-                label.set_text(&format!("NVME {}: {}", i + 1, temp));
+                label.set_text(&format!("NVME {}: {} °C", i + 1, temp));
             } else {
                 label.set_text(&format!("NVME {}: --", i + 1));
             }
