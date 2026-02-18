@@ -41,6 +41,10 @@ pub struct SensorData {
     pub gpu_hotspot: String,
     pub gpu_memory: String,
     pub gpu_fan: String,
+    pub gpu_power: String,
+    pub gpu_vram_used: String,
+    pub gpu_vram_total: String,
+    pub gpu_utilization: f32,
 
     pub nvme_temps: Vec<String>,
 
@@ -183,7 +187,7 @@ impl SensorData {
     fn update_nvidia_gpu_info(&mut self) {
 
         if let Ok(output) = Command::new("nvidia-smi")
-            .arg("--query-gpu=temperature.gpu,fan.speed")
+            .arg("--query-gpu=temperature.gpu,fan.speed,memory.used,memory.total,power.draw,utilization.gpu")
             .arg("--format=csv,noheader,nounits")
             .output()
         {
@@ -196,12 +200,41 @@ impl SensorData {
                 }
 
                 if let Some(fan) = parts.get(1) {
-                    self.gpu_fan = format!("{} RPM", fan.trim());
+                    let fan_val = fan.trim();
+                    if fan_val == "[N/A]" {
+                        self.gpu_fan = "Not exposed by NVIDIA driver".to_string();
+                    } else {
+                        self.gpu_fan = format!("{}%", fan_val);
+                    }
+                }
+
+                if let Some(mem_used) = parts.get(2) {
+                    self.gpu_vram_used = mem_used.trim().to_string();
+                }
+
+                if let Some(mem_total) = parts.get(3) {
+                    self.gpu_vram_total = mem_total.trim().to_string();
+                }
+
+                if let Some(power) = parts.get(4) {
+                    let power_val = power.trim();
+                    if power_val == "[N/A]" {
+                        self.gpu_power = "N/A".to_string();
+                    } else {
+                        self.gpu_power = format!("{} W", power_val);
+                    }
+                }
+
+                if let Some(util) = parts.get(5) {
+                    let util_val = util.trim();
+                    if util_val == "[N/A]" {
+                        self.gpu_utilization = 0.0;
+                    } else {
+                        self.gpu_utilization = util_val.parse::<f32>().unwrap_or(0.0);
+                    }
                 }
             }
         }
-
-        return;
     }
 
     fn update_radeon_gpu_info(&mut self, sensors_output: &String) {
