@@ -302,7 +302,7 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
 }
 
 fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
-    let frame = Frame::new(Some("Storage (NVME)"));
+    let frame = Frame::new(Some("Storage (NVMe)"));
     let storage_box = Box::new(Orientation::Vertical, 5);
     storage_box.set_margin_top(10);
     storage_box.set_margin_bottom(10);
@@ -321,7 +321,7 @@ fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     } else {
         for i in 0..nvme_count {
             let temp = &sensor_data.borrow().nvme_temps[i];
-            let label = Label::new(Some(&format!("NVME {}: {} °C", i + 1, temp)));
+            let label = Label::new(Some(&format!("NVMe {}: {} °C", i + 1, temp)));
             label.set_halign(gtk4::Align::Start);
             storage_box.append(&label);
             initial_labels.push(label);
