@@ -2,7 +2,7 @@ mod sensors;
 
 use glib::timeout_add_seconds_local;
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box, Frame, Grid, Label, Orientation, ProgressBar};
+use gtk4::{Application, ApplicationWindow, Box, Frame, Grid, Label, Orientation, ProgressBar, ScrolledWindow};
 use sensors::SensorData;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -65,7 +65,10 @@ fn build_ui(app: &Application) {
     let ram_frame = create_ram_section(&sensor_data);
     main_box.append(&ram_frame);
 
-    window.set_child(Some(&main_box));
+    let scrolled_window = ScrolledWindow::new();
+    scrolled_window.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+    scrolled_window.set_child(Some(&main_box));
+    window.set_child(Some(&scrolled_window));
 
     let sensor_data_clone = sensor_data.clone();
 
@@ -306,27 +309,56 @@ fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     storage_box.set_margin_start(10);
     storage_box.set_margin_end(10);
 
-    // Create labels for NVME devices
-    let nvme_labels: Vec<Label> = (0..4)
-        .map(|i| {
-            let label = Label::new(Some(&format!("NVME {}: --", i + 1)));
+    // Create initial labels based on detected NVMe drives
+    let nvme_count = sensor_data.borrow().nvme_temps.len();
+    let mut initial_labels: Vec<Label> = Vec::new();
+
+    if nvme_count == 0 {
+        let label = Label::new(Some("No NVMe devices detected"));
+        label.set_halign(gtk4::Align::Start);
+        storage_box.append(&label);
+        initial_labels.push(label);
+    } else {
+        for i in 0..nvme_count {
+            let temp = &sensor_data.borrow().nvme_temps[i];
+            let label = Label::new(Some(&format!("NVME {}: {} °C", i + 1, temp)));
             label.set_halign(gtk4::Align::Start);
             storage_box.append(&label);
-            label
-        })
-        .collect();
+            initial_labels.push(label);
+        }
+    }
+
+    let nvme_labels = Rc::new(RefCell::new(initial_labels));
 
     // Update closure
     let sensor_data_clone = sensor_data.clone();
+    let storage_box_clone = storage_box.clone();
+    let nvme_labels_clone = nvme_labels.clone();
     timeout_add_seconds_local(2, move || {
         let data = sensor_data_clone.borrow();
-        for (i, label) in nvme_labels.iter().enumerate() {
-            if let Some(temp) = data.nvme_temps.get(i) {
-                label.set_text(&format!("NVME {}: {} °C", i + 1, temp));
-            } else {
-                label.set_text(&format!("NVME {}: --", i + 1));
+        let mut labels = nvme_labels_clone.borrow_mut();
+        let count = data.nvme_temps.len();
+
+        // Remove all existing labels
+        for label in labels.iter() {
+            storage_box_clone.remove(label);
+        }
+        labels.clear();
+
+        if count == 0 {
+            let label = Label::new(Some("No NVMe devices detected"));
+            label.set_halign(gtk4::Align::Start);
+            storage_box_clone.append(&label);
+            labels.push(label);
+        } else {
+            for (i, temp) in data.nvme_temps.iter().enumerate() {
+                let label = Label::new(Some(&format!("NVME {}: {} °C", i + 1, temp)));
+                label.set_halign(gtk4::Align::Start);
+                storage_box_clone.append(&label);
+                labels.push(label);
             }
         }
+
         glib::ControlFlow::Continue
     });
 
@@ -394,7 +426,7 @@ fn create_ram_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     let available_value_clone = available_value.clone();
     let ram_progress_clone = ram_progress.clone();
     let sensor_data_clone = sensor_data.clone();
-    
+
     timeout_add_seconds_local(5, move || {
 
         let data = sensor_data_clone.borrow();
