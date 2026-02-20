@@ -164,13 +164,30 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     grid.attach(&gpu_name_value, 1, row, 1, 1);
     row += 1;
 
-    // Check if AMD Radeon
+    // Check GPU vendor
     let is_radeon = sensor_data.borrow().gpu_name.contains("Radeon");
-    
+    let is_nvidia = sensor_data.borrow().gpu_name.to_lowercase().contains("nvidia");
+
     let hotspot_value = Label::new(Some(&sensor_data.borrow().gpu_hotspot));
     let edge_value = Label::new(Some(&sensor_data.borrow().gpu_edge));
     let memory_value = Label::new(Some(&sensor_data.borrow().gpu_memory));
     let fan_value = Label::new(Some(&sensor_data.borrow().gpu_fan));
+    let power_value = Label::new(Some(&sensor_data.borrow().gpu_power));
+    let vram_used = sensor_data.borrow().gpu_vram_used.clone();
+    let vram_total = sensor_data.borrow().gpu_vram_total.clone();
+    let vram_fraction = vram_used.parse::<f64>().unwrap_or(0.0)
+        / vram_total.parse::<f64>().unwrap_or(1.0).max(1.0);
+    let vram_progress = ProgressBar::new();
+    vram_progress.set_hexpand(true);
+    vram_progress.set_fraction(vram_fraction);
+    vram_progress.set_show_text(true);
+    vram_progress.set_text(Some(&format!("{} / {} MiB", vram_used, vram_total)));
+
+    let gpu_util_progress = ProgressBar::new();
+    gpu_util_progress.set_hexpand(true);
+    gpu_util_progress.set_fraction(sensor_data.borrow().gpu_utilization as f64 / 100.0);
+    gpu_util_progress.set_show_text(true);
+    gpu_util_progress.set_text(Some(&format!("{:.0}%", sensor_data.borrow().gpu_utilization)));
 
     if is_radeon {
         // Hotspot
@@ -203,8 +220,45 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
         fan_value.set_halign(gtk4::Align::Start);
         grid.attach(&fan_label, 0, row, 1, 1);
         grid.attach(&fan_value, 1, row, 1, 1);
+    } else if is_nvidia {
+        // Temperature
+        let temp_label = Label::new(Some("Temperature (°C):"));
+        temp_label.set_halign(gtk4::Align::Start);
+        edge_value.set_halign(gtk4::Align::Start);
+        grid.attach(&temp_label, 0, row, 1, 1);
+        grid.attach(&edge_value, 1, row, 1, 1);
+        row += 1;
+
+        // Fan speed
+        let fan_label = Label::new(Some("Fan:"));
+        fan_label.set_halign(gtk4::Align::Start);
+        fan_value.set_halign(gtk4::Align::Start);
+        grid.attach(&fan_label, 0, row, 1, 1);
+        grid.attach(&fan_value, 1, row, 1, 1);
+        row += 1;
+
+        // VRAM usage
+        let vram_label = Label::new(Some("VRAM:"));
+        vram_label.set_halign(gtk4::Align::Start);
+        grid.attach(&vram_label, 0, row, 1, 1);
+        grid.attach(&vram_progress, 1, row, 2, 1);
+        row += 1;
+
+        // Power draw
+        let power_label = Label::new(Some("Power:"));
+        power_label.set_halign(gtk4::Align::Start);
+        power_value.set_halign(gtk4::Align::Start);
+        grid.attach(&power_label, 0, row, 1, 1);
+        grid.attach(&power_value, 1, row, 1, 1);
+        row += 1;
+
+        // GPU utilization
+        let util_label = Label::new(Some("Load:"));
+        util_label.set_halign(gtk4::Align::Start);
+        grid.attach(&util_label, 0, row, 1, 1);
+        grid.attach(&gpu_util_progress, 1, row, 2, 1);
     } else {
-        // Just temperature for NVIDIA/Intel
+        // Fallback for Intel/unknown
         let temp_label = Label::new(Some("Temperature (°C):"));
         temp_label.set_halign(gtk4::Align::Start);
         edge_value.set_halign(gtk4::Align::Start);
@@ -218,8 +272,11 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     let edge_value_clone = edge_value.clone();
     let memory_value_clone = memory_value.clone();
     let fan_value_clone = fan_value.clone();
+    let power_value_clone = power_value.clone();
+    let vram_progress_clone = vram_progress.clone();
+    let gpu_util_progress_clone = gpu_util_progress.clone();
     let sensor_data_clone = sensor_data.clone();
-    
+
     timeout_add_seconds_local(2, move || {
         let data = sensor_data_clone.borrow();
         gpu_name_value_clone.set_text(&data.gpu_name);
@@ -227,6 +284,13 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
         edge_value_clone.set_text(&data.gpu_edge);
         memory_value_clone.set_text(&data.gpu_memory);
         fan_value_clone.set_text(&data.gpu_fan);
+        power_value_clone.set_text(&data.gpu_power);
+        let used = data.gpu_vram_used.parse::<f64>().unwrap_or(0.0);
+        let total = data.gpu_vram_total.parse::<f64>().unwrap_or(1.0).max(1.0);
+        vram_progress_clone.set_fraction(used / total);
+        vram_progress_clone.set_text(Some(&format!("{} / {} MiB", data.gpu_vram_used, data.gpu_vram_total)));
+        gpu_util_progress_clone.set_fraction(data.gpu_utilization as f64 / 100.0);
+        gpu_util_progress_clone.set_text(Some(&format!("{:.0}%", data.gpu_utilization)));
         glib::ControlFlow::Continue
     });
 
