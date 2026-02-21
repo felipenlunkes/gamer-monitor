@@ -126,17 +126,14 @@ fn create_cpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     grid.attach(&cpu_progress, 1, 2, 2, 1);
 
     // Update closure
-    let cpu_name_value_clone = cpu_name_value.clone();
-    let cpu_temp_value_clone = cpu_temp_value.clone();
-    let cpu_progress_clone = cpu_progress.clone();
     let sensor_data_clone = sensor_data.clone();
     
     timeout_add_seconds_local(2, move || {
         let data = sensor_data_clone.borrow();
-        cpu_name_value_clone.set_text(&data.cpu_name);
-        cpu_temp_value_clone.set_text(&data.cpu_temp);
-        cpu_progress_clone.set_fraction(data.cpu_usage as f64 / 100.0);
-        cpu_progress_clone.set_text(Some(&format!("{:.1}%", data.cpu_usage)));
+        cpu_name_value.set_text(&data.cpu_name);
+        cpu_temp_value.set_text(&data.cpu_temp);
+        cpu_progress.set_fraction(data.cpu_usage as f64 / 100.0);
+        cpu_progress.set_text(Some(&format!("{:.1}%", data.cpu_usage)));
         glib::ControlFlow::Continue
     });
 
@@ -270,30 +267,22 @@ fn create_gpu_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     }
 
     // Update closure
-    let gpu_name_value_clone = gpu_name_value.clone();
-    let hotspot_value_clone = hotspot_value.clone();
-    let edge_value_clone = edge_value.clone();
-    let memory_value_clone = memory_value.clone();
-    let fan_value_clone = fan_value.clone();
-    let power_value_clone = power_value.clone();
-    let vram_progress_clone = vram_progress.clone();
-    let gpu_util_progress_clone = gpu_util_progress.clone();
     let sensor_data_clone = sensor_data.clone();
 
     timeout_add_seconds_local(2, move || {
         let data = sensor_data_clone.borrow();
-        gpu_name_value_clone.set_text(&data.gpu_name);
-        hotspot_value_clone.set_text(&data.gpu_hotspot);
-        edge_value_clone.set_text(&data.gpu_edge);
-        memory_value_clone.set_text(&data.gpu_memory);
-        fan_value_clone.set_text(&data.gpu_fan);
-        power_value_clone.set_text(&data.gpu_power);
+        gpu_name_value.set_text(&data.gpu_name);
+        hotspot_value.set_text(&data.gpu_hotspot);
+        edge_value.set_text(&data.gpu_edge);
+        memory_value.set_text(&data.gpu_memory);
+        fan_value.set_text(&data.gpu_fan);
+        power_value.set_text(&data.gpu_power);
         let used = data.gpu_vram_used.parse::<f64>().unwrap_or(0.0);
         let total = data.gpu_vram_total.parse::<f64>().unwrap_or(1.0).max(1.0);
-        vram_progress_clone.set_fraction(used / total);
-        vram_progress_clone.set_text(Some(&format!("{} / {} MiB", data.gpu_vram_used, data.gpu_vram_total)));
-        gpu_util_progress_clone.set_fraction(data.gpu_utilization as f64 / 100.0);
-        gpu_util_progress_clone.set_text(Some(&format!("{:.0}%", data.gpu_utilization)));
+        vram_progress.set_fraction(used / total);
+        vram_progress.set_text(Some(&format!("{} / {} MiB", data.gpu_vram_used, data.gpu_vram_total)));
+        gpu_util_progress.set_fraction(data.gpu_utilization as f64 / 100.0);
+        gpu_util_progress.set_text(Some(&format!("{:.0}%", data.gpu_utilization)));
         glib::ControlFlow::Continue
     });
 
@@ -334,6 +323,7 @@ fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     let sensor_data_clone = sensor_data.clone();
     let storage_box_clone = storage_box.clone();
     let nvme_labels_clone = nvme_labels.clone();
+
     timeout_add_seconds_local(2, move || {
         let data = sensor_data_clone.borrow();
         let mut labels = nvme_labels_clone.borrow_mut();
@@ -352,7 +342,7 @@ fn create_storage_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
             labels.push(label);
         } else {
             for (i, temp) in data.nvme_temps.iter().enumerate() {
-                let label = Label::new(Some(&format!("NVME {}: {} °C", i + 1, temp)));
+                let label = Label::new(Some(&format!("NVMe {}: {} °C", i + 1, temp)));
                 label.set_halign(gtk4::Align::Start);
                 storage_box_clone.append(&label);
                 labels.push(label);
@@ -420,22 +410,17 @@ fn create_ram_section(sensor_data: &Rc<RefCell<SensorData>>) -> Frame {
     grid.attach(&ram_progress, 1, 4, 2, 1);
 
     // Update closure
-    let total_value_clone = total_value.clone();
-    let used_value_clone = used_value.clone();
-    let free_value_clone = free_value.clone();
-    let available_value_clone = available_value.clone();
-    let ram_progress_clone = ram_progress.clone();
     let sensor_data_clone = sensor_data.clone();
 
     timeout_add_seconds_local(5, move || {
 
         let data = sensor_data_clone.borrow();
-        total_value_clone.set_text(&format!("{:.1} GB", data.ram_total));
-        used_value_clone.set_text(&format!("{:.1} GB", data.ram_used));
-        free_value_clone.set_text(&format!("{:.1} GB", data.ram_free));
-        available_value_clone.set_text(&format!("{:.1} GB", data.ram_available));
-        ram_progress_clone.set_fraction(data.ram_percent as f64 / 100.0);
-        ram_progress_clone.set_text(Some(&format!("{:.1}%", data.ram_percent)));
+        total_value.set_text(&format!("{:.1} GB", data.ram_total));
+        used_value.set_text(&format!("{:.1} GB", data.ram_used));
+        free_value.set_text(&format!("{:.1} GB", data.ram_free));
+        available_value.set_text(&format!("{:.1} GB", data.ram_available));
+        ram_progress.set_fraction(data.ram_percent as f64 / 100.0);
+        ram_progress.set_text(Some(&format!("{:.1}%", data.ram_percent)));
         glib::ControlFlow::Continue
     });
 
